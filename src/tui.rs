@@ -58,7 +58,6 @@ impl fmt::Display for Size {
     }
 }
 
-
 pub struct Screen {
     inner: Box<RefCell<dyn io::Write>>,
     dimensions: Size,
@@ -81,13 +80,12 @@ impl Screen {
         &self.dimensions
     }
 
-    pub fn enter_raw_mode(mut self) -> io::Result<Self> {
+    pub fn enter_raw_mode(self) -> io::Result<Self> {
         terminal::enable_raw_mode()?;
-        self.dimensions = Self::get_terminal_size()?;
         Ok(self)
     }
 
-    pub fn command_buffer(&self) -> CommandBuffer {
+    pub fn draw_buffer(&self) -> CommandBuffer {
         CommandBuffer::new(&self.inner)
     }
 
