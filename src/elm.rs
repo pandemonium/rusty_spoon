@@ -1,4 +1,4 @@
-use std::{io, net::TcpStream};
+use std::io;
 
 use crossterm::terminal;
 

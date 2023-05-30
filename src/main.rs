@@ -1,4 +1,4 @@
-use std::io;
+use std::{io, fmt};
 
 mod elm;
 use elm::Host;
@@ -8,6 +8,41 @@ mod tui;
 /* Make a crossterm prelude for the elm module? */
 use crossterm::{cursor, event, event::{KeyCode, KeyModifiers}, style, QueueableCommand, terminal};
 
+#[derive(Clone, Debug)]
+struct Size {
+    width:  u16,
+    height: u16,
+}
+
+impl Size {
+    fn new(width: u16, height: u16) -> Self {
+        Self { width, height }
+    }
+
+    fn request() -> elm::Cmd<Message> {
+        elm::request_size(|width, height|
+            Message::SizedChanged((width, height).into())
+        )
+    }
+}
+
+impl fmt::Display for Size {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}x{}", self.width, self.height)
+    }
+}
+
+impl Default for Size {
+    fn default() -> Self {
+        Self { width: Default::default(), height: Default::default() }
+    }
+}
+
+impl From<(u16, u16)> for Size {
+    fn from(value: (u16, u16)) -> Self {
+        Size::new(value.0, value.1)
+    }
+}
 
 struct EditorContents {
     contents: String,
@@ -31,7 +66,7 @@ impl Default for EditorContents {
 
 struct CursorController {
     column: u16, row: u16,
-    screen_width: u16, screen_height: u16,
+    screen_bounds: Size,
 }
 
 impl CursorController {
@@ -45,9 +80,8 @@ impl CursorController {
         }
     }
 
-    fn bounds_changed(&mut self, new_width: &u16, new_height: &u16) -> elm::Cmd<Message> {
-        self.screen_width = *new_width;
-        self.screen_height = *new_height;
+    fn bounds_changed(&mut self, new_size: Size) -> elm::Cmd<Message> {
+        self.screen_bounds = new_size;
         elm::Cmd::none()
     }
 }
@@ -55,8 +89,9 @@ impl CursorController {
 impl Default for CursorController {
     fn default() -> Self {
         Self {
-            column: Default::default(), row: Default::default(),
-            screen_width: Default::default(), screen_height: Default::default()
+            column: Default::default(), 
+            row: Default::default(),
+            screen_bounds: Default::default(),
         }
     }
 }
@@ -92,9 +127,12 @@ impl Editor {
 
     fn handle_event(&mut self, event: &event::Event) -> elm::Cmd<Message> {
         match event {
-            event::Event::Key(key)              => self.key_typed(key),
-            event::Event::Resize(width, height) => self.cursor.bounds_changed(width, height),
-            _otherwise                          => elm::Cmd::none(),
+            event::Event::Key(key) =>
+                self.key_typed(key),
+            event::Event::Resize(width, height) =>
+                self.cursor.bounds_changed((*width, *height).into()),
+            _otherwise =>
+                elm::Cmd::none(),
         }
     }
 }
@@ -113,7 +151,7 @@ impl Default for Editor {
 enum Message {
     SetBufferName(String),
     ExternalEvent(event::Event),
-    SizedChanged { width: u16, height: u16 },
+    SizedChanged(Size),
 }
 
 impl elm::Application for Editor {
@@ -121,9 +159,7 @@ impl elm::Application for Editor {
     type View = tui::Screen;
 
     fn init() -> (Self, elm::Cmd<Message>) {
-        (Editor::default(), elm::request_size(|width, height| 
-            Message::SizedChanged { width, height })
-        )
+        (Editor::default(), Size::request())
     }
 
     fn update(&mut self, message: &Message) -> elm::Cmd<Message> {
@@ -136,14 +172,14 @@ impl elm::Application for Editor {
             Message::ExternalEvent(event) =>
                 self.handle_event(event),
 
-            Message::SizedChanged { width, height } =>
-                self.cursor.bounds_changed(width, height),
+            Message::SizedChanged(size) =>
+                self.cursor.bounds_changed(size.clone()),
         }
     }
 
     fn view(&self, display: &Self::View) -> Result<(), io::Error> {
         /* This is sub-par and requires more thought. */
-        let cursor_bounds = (self.cursor.screen_width, self.cursor.screen_height);
+        let cursor_bounds = &self.cursor.screen_bounds;
 
         let mut buffer = display.draw_buffer();
 
@@ -154,11 +190,11 @@ impl elm::Application for Editor {
             .queue(cursor::Hide)?
             .queue(cursor::MoveTo(0, 0))?;
 
-        for i in 0..self.cursor.screen_height {
+        for i in 0..cursor_bounds.height  {
             buffer.queue(style::Print("~"))?
                   .queue(terminal::Clear(terminal::ClearType::UntilNewLine))?;
 
-            if i < self.cursor.screen_height - 1 {
+            if i < cursor_bounds.height - 1 {
                 buffer.queue(style::Print("\r\n"))?;
             }
         }

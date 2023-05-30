@@ -1,6 +1,6 @@
 use std::{io, cell::RefCell, cell::RefMut};
 use std::io::Write;
-use std::{time, fmt};
+use std::time;
 
 use crossterm::{Command, event, terminal, QueueableCommand};
 
@@ -39,45 +39,15 @@ impl <'a> CommandBuffer<'a> {
     }
 }
 
-
-#[derive(Clone, Debug)]
-pub struct Size {
-    pub width:  u16,
-    pub height: u16,
-}
-
-impl Size {
-    fn new(width: u16, height: u16) -> Self {
-        Self { width, height }
-    }
-}
-
-impl fmt::Display for Size {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}x{}", self.width, self.height)
-    }
-}
-
 pub struct Screen {
     inner: Box<RefCell<dyn io::Write>>,
-    dimensions: Size,
 }
 
 impl Screen {
     pub fn attach<W: Write + 'static>(out: W) -> io::Result<Self> {
         Ok(Self {
             inner: Box::new(RefCell::new(out)),
-            dimensions: Self::get_terminal_size()?,
         })
-    }
-
-    fn get_terminal_size() -> io::Result<Size> {
-        let (columns, rows) = terminal::size()?;
-        Ok(Size::new(columns, rows))
-    }
-
-    pub fn dimensions(&self) -> &Size {
-        &self.dimensions
     }
 
     pub fn enter_raw_mode(self) -> io::Result<Self> {
