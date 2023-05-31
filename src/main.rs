@@ -1,4 +1,4 @@
-use std::{cmp, fmt, io};
+use std::{cmp, fmt, fs, io, path};
 
 mod elm;
 use elm::Host;
@@ -21,7 +21,7 @@ impl ScreenSize {
     }
 
     fn request() -> elm::Cmd<Message> {
-        elm::request_size(|width, height|
+        tui::request_terminal_size(|width, height|
             Message::SizedChanged((width, height).into())
         )
     }
@@ -91,6 +91,21 @@ impl EditingModel {
         }
     }
 
+    fn with_lines(lines: &[String]) -> Self {
+        Self {
+            lines:    lines.to_vec(),
+            viewport: Default::default(),
+        }
+    }
+
+    fn from_file(file_path: &path::Path) -> io::Result<Self> {
+        let file_contents = fs::read_to_string(file_path)?;
+        let lines = file_contents.lines()
+            .map(|line| line.to_owned())
+            .collect::<Vec<_>>();
+        Ok(Self::with_lines(&lines))
+    }
+
     fn line_count(&self) -> usize { self.lines.len() }
 
     fn line_at(&self, index: usize, width: usize) -> Option<&str> {
@@ -106,7 +121,7 @@ impl Default for EditingModel {
 
 struct CursorModel {
     column: u16, row: u16,
-    screen_bounds: ScreenSize,
+    screen_size: ScreenSize,
 }
 
 impl CursorModel {
@@ -120,8 +135,8 @@ impl CursorModel {
         }
     }
 
-    fn bounds_changed(&mut self, new_size: ScreenSize) -> elm::Cmd<Message> {
-        self.screen_bounds = new_size;
+    fn screen_size_changed(&mut self, new_size: ScreenSize) -> elm::Cmd<Message> {
+        self.screen_size = new_size;
         elm::Cmd::none()
     }
 }
@@ -131,7 +146,7 @@ impl Default for CursorModel {
         Self {
             column: Default::default(), 
             row: Default::default(),
-            screen_bounds: Default::default(),
+            screen_size: Default::default(),
         }
     }
 }
@@ -165,19 +180,19 @@ impl Editor {
         }
     }
 
-    fn handle_event(&mut self, event: &event::Event) -> elm::Cmd<Message> {
+    fn event_occurred(&mut self, event: &event::Event) -> elm::Cmd<Message> {
         match event {
             event::Event::Key(key) =>
                 self.key_typed(key),
             event::Event::Resize(width, height) =>
-                self.cursor.bounds_changed((*width, *height).into()),
+                self.cursor.screen_size_changed((*width, *height).into()),
             _otherwise =>
                 elm::Cmd::none(),
         }
     }
 
     fn render(&self, buffer: &mut RenderingBuffer) -> io::Result<()> {
-        let cursor_bounds = &self.cursor.screen_bounds;
+        let cursor_bounds = &self.cursor.screen_size;
 
         /* At least consider putting the draw methods behind some
            trait to cut down on the amount of code clutter. */
@@ -200,7 +215,7 @@ impl Editor {
     }
 
     fn render_contents(&self, buffer: &mut RenderingBuffer) -> io::Result<()> {
-        let cursor_bounds = &self.cursor.screen_bounds;
+        let cursor_bounds = &self.cursor.screen_size;
         for i in 0..cursor_bounds.rows  {
             let line = self.render_line(i as usize);
 
@@ -216,7 +231,7 @@ impl Editor {
     }
 
     fn render_line(&self, i: usize) -> &str {
-        let line_width = self.cursor.screen_bounds.columns as usize;
+        let line_width = self.cursor.screen_size.columns as usize;
         self.contents.line_at(i, line_width).unwrap_or("~")
     }
 
@@ -227,8 +242,8 @@ impl Default for Editor {
     fn default() -> Self {
         Self {
             buffer_name: "Unnamed".to_owned(),
-            contents: EditingModel::default(),
-            cursor: CursorModel::default(),
+            contents:    EditingModel::from_file(path::Path::new("Cargo.toml")).unwrap(),
+            cursor:      CursorModel::default(),
         }
     }
 }
@@ -241,7 +256,7 @@ enum Message {
 }
 
 impl elm::Application for Editor {
-    type Msg = Message;
+    type Msg  = Message;
     type View = tui::Screen;
 
     fn init() -> (Self, elm::Cmd<Message>) {
@@ -256,10 +271,10 @@ impl elm::Application for Editor {
             }
 
             Message::ExternalEvent(event) =>
-                self.handle_event(event),
+                self.event_occurred(event),
 
             Message::SizedChanged(size) =>
-                self.cursor.bounds_changed(size.clone()),
+                self.cursor.screen_size_changed(size.clone()),
         }
     }
 
@@ -278,6 +293,9 @@ impl From<event::Event> for Message {
 }
 
 fn main() -> io::Result<()> {
+    let args = std::env::args();
+    println!("Args: {:?}", args);
+
     let out = io::BufWriter::with_capacity(16384, io::stdout());
     tui::Screen::attach(out)?
         .enter_raw_mode()?

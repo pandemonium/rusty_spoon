@@ -41,16 +41,6 @@ pub trait Application: Sized {
     fn view(&self, out: &Self::View) -> io::Result<()>;
 }
 
-pub fn request_size<F, Msg: Clone>(to_msg: F) -> Cmd<Msg> 
-where
-    F: FnOnce(u16, u16) -> Msg + 'static
-{
-    Cmd::suspend(|| {
-        let (width, height) = terminal::size()?;
-        Ok(to_msg(width, height))
-    })
-}
-
 #[derive(Clone, Debug)]
 pub enum Resource<A> {
     Unknown,
@@ -91,9 +81,9 @@ pub trait Host {
 
     fn poll_events(&self) -> io::Result<Self::Event>;
 
-    fn commit_screen_buffer(&self, buffer: &Self::Display) -> io::Result<()>;
+    fn flush(&self, buffer: &Self::Display) -> io::Result<()>;
 
-    fn get_screen_buffer(&self) -> &Self::Display;
+    fn get_display(&self) -> &Self::Display;
 
     fn run_automat<App>(&self) -> io::Result<()>
     where 
@@ -103,14 +93,14 @@ pub trait Host {
         let (mut model, mut cmd) = App::init();
         let mut cmd_stack = vec![];
 
-        /* The trio of .get_screen_buffer, .view, and .commit_xxx
+        /* The trio of .get_display, .view, and .commit_xxx
            could probably be summed up with CommandBuffer to make 
            it more principled. */
-        let screen = self.get_screen_buffer();
+        let screen = self.get_display();
 
         loop {
             model.view(&screen)?;
-            self.commit_screen_buffer(&screen)?;
+            self.flush(&screen)?;
 
             cmd = match cmd {
                 Cmd::Suspend(effect)     => model.update(&effect()?),

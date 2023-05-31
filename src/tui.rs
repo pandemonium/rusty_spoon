@@ -7,12 +7,22 @@ use crossterm::{Command, event, terminal, QueueableCommand};
 use crate::elm;
 
 
+pub fn request_terminal_size<F, Msg: Clone>(to_msg: F) -> elm::Cmd<Msg> 
+where
+    F: FnOnce(u16, u16) -> Msg + 'static
+{
+    elm::Cmd::suspend(|| {
+        let (width, height) = terminal::size()?;
+        Ok(to_msg(width, height))
+    })
+}
+
 impl elm::Host for Screen {
     type Event = event::Event;
     type Display = Self;
 
     /* I dunno, man. */
-    fn get_screen_buffer(&self) -> &Self::Display { &self }
+    fn get_display(&self) -> &Self::Display { &self }
 
     fn poll_events(&self) -> io::Result<Self::Event> {
         if event::poll(time::Duration::from_millis(5427))? {
@@ -22,8 +32,8 @@ impl elm::Host for Screen {
         }
     }
 
-    fn commit_screen_buffer(&self, buffer: &Self::Display) -> io::Result<()> {
-        buffer.flush()
+    fn flush(&self, display: &Self::Display) -> io::Result<()> {
+        display.commit()
     }
 }
 
@@ -59,7 +69,7 @@ impl Screen {
         RenderingBuffer::new(&self.inner)
     }
 
-    pub fn flush(&self) -> io::Result<()> {
+    pub fn commit(&self) -> io::Result<()> {
         self.inner.borrow_mut().flush()
     }
 }
