@@ -27,9 +27,9 @@ impl elm::Host for Screen {
     }
 }
 
-pub struct CommandBuffer<'a>(RefMut<'a, dyn io::Write>);
+pub struct RenderingBuffer<'a>(RefMut<'a, dyn io::Write>);
 
-impl <'a> CommandBuffer<'a> {
+impl <'a> RenderingBuffer<'a> {
     fn new(cell: &'a RefCell<dyn io::Write>) -> Self {
         Self(cell.borrow_mut())
     }
@@ -55,8 +55,8 @@ impl Screen {
         Ok(self)
     }
 
-    pub fn draw_buffer(&self) -> CommandBuffer {
-        CommandBuffer::new(&self.inner)
+    pub fn rendering_buffer(&self) -> RenderingBuffer {
+        RenderingBuffer::new(&self.inner)
     }
 
     pub fn flush(&self) -> io::Result<()> {
